@@ -1,0 +1,258 @@
+---
+title: "Sentiment Analysis Project"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+library(gutenbergr) # a library of many texts
+library(dplyr)
+library(stringr)
+library(tidytext)
+library(ggplot2)
+library(tidyverse)
+library(scales)
+library(tidyr)
+library(gridExtra)
+library(wordcloud)
+library(reshape2)
+```
+
+#TIDY TEXT FORMAT
+```{r}
+Oz <- gutenberg_download(c(55))  # to download The Wonderful Wizard of Oz book in a dataframe from the gutenberg library
+Oz
+
+data("stop_words") # to load the dataset of stop words
+```
+ 
+```{r}
+tidy_Oz <- Oz %>%  # to convert text into tidy format 
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) # removal of stop words in Oz
+tidy_Oz
+
+tidy_Oz %>%count(word, sort = TRUE) # to count most common words in Oz
+```
+
+```{r}
+custom_stop_words1 <- bind_rows(tibble(word = c("dorothy","scarecrow", "witch", "oz", "toto",
+                                                "woodman", "tin"), lexicon = c("custom")), stop_words)
+custom_stop_words1 # to add your own stop words for Oz
+```
+ 
+```{r}
+original_Oz <- Oz %>%
+  mutate(linenumber = row_number(),  # add cols with line and chapter 
+         chapter = cumsum(str_detect(text, 
+                                     regex("^chapter [\\divxlc]",
+                                           ignore_case = TRUE))))
+original_Oz
+
+table(original_Oz$chapter) # no of lines per chapter and book in Oz
+```
+ 
+```{r}
+tidy_Oz <- original_Oz %>%  # unnest i.e. convert to tidy format 
+  unnest_tokens(word, text) %>%
+  anti_join(custom_stop_words1) # removal of custom stop words in Oz
+tidy_Oz %>%count(word, sort = TRUE) 
+```
+ 
+```{r}
+tidy_Oz %>%  
+  count(word, sort = TRUE) %>%
+  filter(n > 50) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word)) +
+  geom_col(fill = "lightgreen") +
+  labs(y = NULL)  # visualisation of the most common words in Oz
+```
+ 
+```{r}
+untidy_Oz <- tidy_Oz %>% # convert tidy format back to text
+  group_by(chapter, linenumber) %>% 
+  summarize(text = str_c(word, collapse = " ")) %>%
+  ungroup()
+untidy_Oz
+getwd()
+write.table(untidy_Oz,file="revised_text_Oz.txt")
+read.table(file="revised_text_Oz.txt")
+```
+ 
+```{r}
+Emma <- gutenberg_download(c(158)) # to download book Emma in a dataframe from the gutenberg library
+Emma
+```
+ 
+```{r}
+tidy_Emma <- Emma %>%  # to convert text into tidy format 
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) # removal of stop words in Emma
+tidy_Emma
+
+tidy_Emma %>%count(word, sort = TRUE) # to count most common words in Emma
+```
+ 
+```{r}
+custom_stop_words2 <- bind_rows(tibble(word = c("emma","jane", "harriet", "weston", "knightley",
+                                                "elton", "frank", "churchill", "hartfield"),  
+                                                lexicon = c("custom")), 
+                                                stop_words)
+custom_stop_words2 # to add your own stop words for Emma
+```
+ 
+```{r}
+original_Emma <- Emma %>%
+  mutate(linenumber = row_number(),  # add cols with line and chapter 
+         chapter = cumsum(str_detect(text, 
+                                     regex("^chapter [\\divxlc]",
+                                           ignore_case = TRUE))))
+original_Emma
+
+table(original_Emma$chapter) # no of lines per chapter and book in Emma
+```
+ 
+```{r}
+tidy_Emma <- original_Emma %>%  # unnest i.e. convert to tidy format 
+  unnest_tokens(word, text) %>%
+  anti_join(custom_stop_words2) # removal of custom stop words in Emma
+
+tidy_Emma %>%count(word, sort = TRUE) 
+```
+ 
+```{r}
+tidy_Emma %>%  # visualisation of the most common words in Emma
+  count(word, sort = TRUE) %>%
+  filter(n > 120) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word)) +
+  geom_col(fill = "skyblue") +
+  labs(y = NULL)
+```
+ 
+```{r}
+untidy_Emma <- tidy_Emma %>%  # convert tidy format back to text
+  group_by(chapter, linenumber) %>% 
+  summarize(text = str_c(word, collapse = " ")) %>%
+  ungroup()
+untidy_Emma
+
+getwd()
+write.table(untidy_Emma,file="revised_text_Emma.txt")
+read.table(file="revised_text_Emma.txt")
+```
+ 
+```{r}
+frequency <- bind_rows(mutate(tidy_Oz, author = "Lyman Frank"),
+                       mutate(tidy_Emma, author = "Jane Austen")) %>% 
+  mutate(word = str_extract(word, "[a-z']+")) %>%
+  count(author, word) %>%
+  group_by(author) %>%
+  mutate(proportion = n / sum(n)) %>% 
+  select(-n) %>% 
+  pivot_wider(names_from = author, values_from = proportion) %>%
+  pivot_longer(`Lyman Frank`, names_to = "author", values_to = "proportion")
+
+frequency # frequency of each words for works of Lyman Frank and Jane Austen
+```
+ 
+```{r}
+ggplot(frequency, aes(x = proportion, y = `Jane Austen`,  # plotting the word frequencies
+                      color = abs(`Jane Austen` - proportion))) +
+                      geom_abline(color = "black", lty = 3) +
+                      geom_jitter(alpha = 0.1, size = 1.5, width = 0.3, height = 0.3) +
+                      geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+                      scale_x_log10(labels = percent_format()) +
+                      scale_y_log10(labels = percent_format()) +
+                      scale_color_gradient(limits = c(0, 0.001), 
+                                           low = "darkgreen", high = "darkblue") +
+                      facet_wrap(~author, ncol = 2) +
+                      theme(legend.position="none") +
+                      labs(y = "Jane Austen", x = NULL)
+```
+ 
+```{r}
+cor.test(data = frequency[frequency$author == "Lyman Frank",],
+         ~ proportion + `Jane Austen`)  # Pearson's product-moment correlation to find the association of word frequencies between both texts
+```
+
+#SENTIMENT ANALYSIS WITH TIDY DATA
+```{r}
+afinn <- get_sentiments("afinn") # sentiment reference
+bing <- get_sentiments("bing")  
+
+```
+ 
+#AFINN 
+```{r}
+Oz_words <- tidy_Oz %>%
+            count(word) %>%
+            inner_join(afinn,"word") 
+Oz_words # to calculate total sentiment contribution of each word
+
+Oz_sentiments <- as.numeric(Oz_words$value)
+hist(Oz_sentiments, col = "lightgreen")  # distribution of afinn words in Oz
+
+weighted.mean(Oz_words$value, Oz_words$n)
+```
+ 
+```{r}
+Emma_words <- tidy_Emma %>%
+  count(word) %>%
+  inner_join(afinn,"word") 
+Emma_words # to calculate total sentiment contribution of each word
+
+Emma_sentiments <- as.numeric(Emma_words$value)
+hist(Emma_sentiments, col = "skyblue")  # distribution of afinn words in Emma
+
+weighted.mean(Emma_words$value, Emma_words$n)
+```
+ 
+#BING
+```{r}
+Oz_sentiment <- tidy_Oz %>%
+  inner_join(bing) %>%
+  count(index = linenumber %/% 25, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+plot_Oz = ggplot(Oz_sentiment, aes(index, sentiment, color = "green" )) + # to plot the sentiment over the trajectory of Oz
+  geom_col(show.legend = FALSE) + geom_bar(stat = "identity", fill = "lightgreen", color = "lightgreen")
+```
+ 
+```{r}
+Emma_sentiment <- tidy_Emma %>%
+  inner_join(bing) %>%
+  count(index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+plot_Emma = ggplot(Emma_sentiment, aes(index, sentiment, color = "blue" )) + # to plot the sentiment over the trajectory of Emma
+  geom_col(show.legend = FALSE) + geom_bar(stat = "identity", fill = "skyblue", color = "skyblue")
+```
+ 
+```{r}
+grid.arrange(plot_Oz,plot_Emma)
+```
+ 
+ # sentiment analysis to tag most common positive and negative words
+ 
+```{r}
+tidy_Oz %>%
+  inner_join(bing) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("red", "lightgreen"),
+                   max.words = 100)
+```
+
+```{r}
+tidy_Emma %>%
+  inner_join(bing) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("red", "skyblue"),
+                   max.words = 100)
+```
+
